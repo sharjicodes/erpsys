@@ -1,42 +1,35 @@
 from rest_framework import generics, permissions
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .models import User
-from .serializers import UserSerializer
-
-# ------------------------
-# Custom Permissions
-# ------------------------
-class IsAdminCustom(permissions.BasePermission):
-    """Allow access only to users with role 'ADMIN'"""
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == 'ADMIN'
-
-class IsAdminOrManager(permissions.BasePermission):
-    """Allow access to Admin or Manager"""
-    def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role in ['ADMIN', 'MANAGER']
+from .serializers import UserSerializer, RegisterSerializer, MyTokenObtainPairSerializer
 
 # ------------------------
 # JWT Login
 # ------------------------
 class LoginView(TokenObtainPairView):
-    """Login to get JWT access and refresh tokens"""
-    pass
+    serializer_class = MyTokenObtainPairSerializer
+
 
 # ------------------------
 # Register new user (Admin only)
 # ------------------------
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [IsAdminCustom]
+    serializer_class = RegisterSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        if self.request.user.role != "ADMIN":
+            raise permissions.PermissionDenied("Only Admins can create users.")
+        serializer.save()
+
 
 # ------------------------
 # List users (Admin & Manager)
 # ------------------------
 class UserListView(generics.ListAPIView):
     serializer_class = UserSerializer
-    permission_classes = [IsAdminOrManager]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
@@ -45,6 +38,35 @@ class UserListView(generics.ListAPIView):
         elif user.role == 'MANAGER':
             return User.objects.filter(role='EMPLOYEE')
         return User.objects.none()
+
+
+# ------------------------
+# Update user (Admin only)
+# ------------------------
+class UserUpdateView(generics.RetrieveUpdateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_update(self, serializer):
+        if self.request.user.role != "ADMIN":
+            raise permissions.PermissionDenied("Only Admins can update users.")
+        serializer.save()
+
+
+# ------------------------
+# Delete user (Admin only)
+# ------------------------
+class UserDeleteView(generics.DestroyAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_destroy(self, instance):
+        if self.request.user.role != "ADMIN":
+            raise permissions.PermissionDenied("Only Admins can delete users.")
+        instance.delete()
+
 
 # ------------------------
 # View own profile
@@ -55,19 +77,3 @@ class ProfileView(generics.RetrieveAPIView):
 
     def get_object(self):
         return self.request.user
-
-# ------------------------
-# Update user (Admin only)
-# ------------------------
-class UserUpdateView(generics.RetrieveUpdateAPIView):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [IsAdminCustom]
-
-# ------------------------
-# Delete user (Admin only)
-# ------------------------
-class UserDeleteView(generics.DestroyAPIView):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [IsAdminCustom]
